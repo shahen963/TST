@@ -8522,6 +8522,7 @@ function txOpenExternalNav() {
 let _txNavMap = null, _txNavRouteLn = null, _txNavRouteOutline = null, _txNavMeMk = null, _txNavDestMk = null;
 let _txNavWatch = null, _txNavSteps = [], _txNavTarget = null, _txNavFollow = true, _txNavLastRoute = 0;
 function txStartInAppNav(target) {
+    try { startTaxiDriverLocationSharing(); } catch (e) {} // ضمان إرسال موقع المندوب للعميل أثناء الملاحة
     // ضمان أن شاشة الملاحة داخل إطار التطبيق بمقاسه (لا تخرج للمتصفح)
     try {
         const shell = document.querySelector('.app-shell');
@@ -9037,14 +9038,17 @@ function startTaxiDriverLocationSharing() {
             if (_tdMeMk) _tdMeMk.setLatLng([la, ln]);
             else _tdMeMk = L.marker([la, ln], { icon: L.divIcon({ html: '<div style="font-size:25px; line-height:1; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));">🚕</div>', className: '', iconSize: [25, 25], iconAnchor: [12, 23] }) }).addTo(_taxiDriverMap).bindPopup('موقعي');
         }
-        // إرسال الموقع للعميل كل 5 ثواني كحد أقصى (في جداول التاكسي فقط)
+        // مشاركة الموقع لحظياً مع نظام الملاحة الداخلي (نفس النبضة)
+        window._lastKnownLat = la; window._lastKnownLng = ln;
+        try { if (typeof txNavOnPosition === 'function' && document.getElementById('tx-nav-screen') && document.getElementById('tx-nav-screen').style.display !== 'none') txNavOnPosition(pos); } catch (e) {}
+        // إرسال الموقع للعميل كل ~2.5 ثانية أثناء الرحلة (في جداول التاكسي فقط)
         const now = Date.now();
-        if (_taxiActiveRide && !['completed', 'cancelled'].includes(_taxiActiveRide.status) && now - _taxiLastLocPush > 5000) {
+        if (_taxiActiveRide && !['completed', 'cancelled'].includes(_taxiActiveRide.status) && now - _taxiLastLocPush > 2500) {
             _taxiLastLocPush = now;
             try { await _taxiDB.from('taxi_orders').update({ driver_lat: la, driver_lng: ln }).eq('id', _taxiActiveRide.id); } catch (e) {}
             try { await _taxiDB.from('taxi_drivers').update({ last_lat: la, last_lng: ln }).eq('driver_ref_id', String((_taxiDriverProfile && _taxiDriverProfile.driver_ref_id) || currentUserData.id)); } catch (e) {}
         }
-    }, function(err) { console.warn('taxi geo error', err); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 });
+    }, function(err) { console.warn('taxi geo error', err); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
 }
 function stopTaxiDriverLocationSharing() {
     // لا نوقف المراقب نهائياً (إيقافه ثم إعادته يطلب الإذن مجدداً على بعض الأجهزة)
